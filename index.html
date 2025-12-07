@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Firebase Chat Demo</title>
+    <meta name="viewport" content="width=device-width,initial-scale:1.0">
+</head>
+<body>
+    <h2>Chat</h2>
+
+    <input id="msg" placeholder="Mesaj yaz">
+    <button onclick="sendMessage()">Gönder</button>
+
+    <ul id="messages"></ul>
+
+    <script type="module">
+        // Firebase SDK'ları
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
+        import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        // Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDQhxU95j872NVd3JLdVAZxuOhGArVTNPA",
+            authDomain: "chat-e2e62.firebaseapp.com",
+            databaseURL: "https://chat-e2e62-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "chat-e2e62",
+            storageBucket: "chat-e2e62.firebasestorage.app",
+            messagingSenderId: "79395851722",
+            appId: "1:79395851722:web:c4481c5915a0364d7d1333",
+            measurementId: "G-QLMZ8QB9FE"
+        };
+
+        // Firebase başlat
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const db = getDatabase(app);
+
+        // MESAJ GÖNDER
+        window.sendMessage = function () {
+            const message = document.getElementById("msg").value;
+
+            if (message.trim() === "") return;
+
+            const messagesRef = ref(db, "messages");
+            push(messagesRef, message);
+
+            document.getElementById("msg").value = "";
+        };
+
+        // MESAJLARI OKU (CANLI)
+        const messagesRef = ref(db, "messages");
+        onValue(messagesRef, snapshot => {
+            const list = document.getElementById("messages");
+            list.innerHTML = "";
+
+            snapshot.forEach(item => {
+                const li = document.createElement("li");
+                li.textContent = item.val();
+                list.appendChild(li);
+            });
+        });
+
+    </script>
+</body>
+</html>
