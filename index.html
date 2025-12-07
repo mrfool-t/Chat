@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mini Sohbet</title>
+<style>
+    /* Tasarımın görünüşüne sadık: beyaz kutu, ortalanmış, yuvarlak köşeler */
+    body {
+        margin:0;
+        padding:0;
+        font-family: Arial, sans-serif;
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        height:100vh;
+        background:#f0f0f0;
+    }
+
+    .screen {
+        display:none;
+        width:100%;
+        max-width:450px;
+        background:white;
+        padding:20px;
+        box-shadow:0 0 15px rgba(0,0,0,0.1);
+        border-radius:12px;
+    }
+    .active { display:block; }
+
+    input, button, textarea {
+        width:100%;
+        padding:10px;
+        margin:8px 0;
+        border-radius:8px;
+        border:1px solid #aaa;
+        box-sizing:border-box;
+        font-size:14px;
+    }
+
+    button {
+        background:#007bff;
+        color:white;
+        border:none;
+        cursor:pointer;
+    }
+
+    #profilePreview {
+        width:90px;
+        height:90px;
+        border-radius:50%;
+        object-fit:cover;
+        display:block;
+        margin:auto;
+        border:2px solid #333;
+        background:#fff;
+    }
+
+    .userItem {
+        padding:10px;
+        border-bottom:1px solid #ddd;
+        cursor:pointer;
+        display:flex;
+        gap:10px;
+        align-items:center;
+    }
+    .userItem img { width:42px; height:42px; border-radius:50%; object-fit:cover; }
+
+    #messages {
+        height:320px;
+        overflow-y:auto;
+        border:1px solid #ccc;
+        padding:10px;
+        margin-bottom:10px;
+        background:#fafafa;
+    }
+
+    .msg { padding:8px; margin:6px 0; border-radius:8px; max-width:80%; background:#e4e4e4; }
+    .msg.me { background:#007bff; color:white; margin-left:auto; }
+    .small { font-size:12px; color:#666; margin-top:6px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login" class="screen active">
+    <h2>Giriş Yap</h2>
+    <input id="loginUser" placeholder="Kullanıcı adı" autocomplete="username">
+    <input id="loginPass" placeholder="Şifre" type="password" autocomplete="current-password">
+    <label style="font-size:14px">
+        <input type="checkbox" id="showPassLogin"> Şifreyi göster
+    </label>
+    <button onclick="loginUserFunc()">Giriş Yap</button>
+    <button onclick="show(register)">Kayıt Ol</button>
+    <div class="small">İyi Sohbetler</div>
+</div>
+
+<!-- REGISTER -->
+<div id="register" class="screen">
+    <h2>Kayıt Ol</h2>
+
+    <img id="profilePreview" src="" alt="Profil" />
+    <input type="file" id="profilePic" accept="image/*">
+
+    <input id="regUser" placeholder="Kullanıcı adı">
+    <input id="regPass" placeholder="Şifre" type="password">
+
+    <button onclick="checkPassword()">Şifreyi Kontrol Et</button>
+
+    <div id="checkResult" style="display:none;margin-top:10px">
+        <p>Girdiğiniz şifre gösteriliyor. Doğruysa devam, yanlışsa değiştirin.</p>
+        <div id="shownPass" style="padding:10px;background:#f7f7f7;border-radius:6px;margin-bottom:8px;"></div>
+        <button style="background:#ff3b30" onclick="changePass()">Yanlış — Değiştir</button>
+        <button style="background:#30d158" onclick="showAvatarStep()">Doğru — Devam</button>
+    </div>
+
+    <div id="avatarStep" style="display:none;margin-top:10px">
+        <p>Profil resmi isteğe bağlı. Seçmediysen boş bırakılacaktır.</p>
+        <button onclick="finalRegister()">Kaydı Tamamla</button>
+    </div>
+
+    <button onclick="show(login)">Geri</button>
+</div>
+
+<!-- HOME -->
+<div id="home" class="screen">
+    <h2>Hoşgeldin, <span id="meName"></span></h2>
+
+    <input id="searchUser" placeholder="Kullanıcı ara..." />
+    <div id="userList" style="max-height:240px; overflow:auto; margin-top:10px;"></div>
+
+    <div style="display:flex;gap:8px;margin-top:10px;">
+        <button style="flex:1" onclick="openGeneral()">Genel Sohbet</button>
+        <button style="flex:1;background:#6c757d" onclick="logout()">Çıkış</button>
+    </div>
+</div>
+
+<!-- CHAT -->
+<div id="chat" class="screen">
+    <h3 id="chatWith">Sohbet</h3>
+    <div id="messages"></div>
+
+    <input id="msgInput" placeholder="Mesaj yaz..." />
+    <button onclick="sendMsg()">Gönder</button>
+
+    <div style="display:flex;gap:8px;margin-top:8px;">
+        <button style="flex:1" onclick="show(home)">Geri</button>
+        <button style="flex:1;background:#28a745" onclick="clearMessagesLocal()">Temizle (yerel)</button>
+    </div>
+</div>
+
+<script type="module">
+/* ===================================================
+   Firebase (sadece canlı mesajlar için)
+   Senin verdiğin config kullanıldı.
+   =================================================== */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getDatabase, ref, push, onChildAdded, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDQhxU95j872NVd3JLdVAZxuOhGArVTNPA",
+  authDomain: "chat-e2e62.firebaseapp.com",
+  databaseURL: "https://chat-e2e62-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "chat-e2e62",
+  storageBucket: "chat-e2e62.firebasestorage.app",
+  messagingSenderId: "79395851722",
+  appId: "1:79395851722:web:c4481c5915a0364d7d1333",
+  measurementId: "G-QLMZ8QB9FE"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+/* ===================================================
+   Ekran kontroller
+   =================================================== */
+const login = document.getElementById("login");
+const register = document.getElementById("register");
+const home = document.getElementById("home");
+const chat = document.getElementById("chat");
+
+function show(screen){
+    [login,register,home,chat].forEach(s=>s.classList.remove("active"));
+    screen.classList.add("active");
+}
+window.show = show; // inline onclick'ler için global
+
+/* ===================================================
+   Utility: users stored in localStorage as object:
+   key "users" -> { username: { pass: "...", profile: "data:image/..." } }
+   active user stored as "current"
+   =================================================== */
+function getUsers(){
+    return JSON.parse(localStorage.getItem("users") || "{}");
+}
+function saveUsers(u){
+    localStorage.setItem("users", JSON.stringify(u));
+}
+function setCurrent(u){
+    localStorage.setItem("current", u);
+}
+function getCurrent(){ return localStorage.getItem("current"); }
+function ensureLoggedIn(){ return !!getCurrent(); }
+
+/* ===================================================
+   PROFILE IMAGE preview -> base64 stored locally
+   =================================================== */
+const profilePic = document.getElementById("profilePic");
+const profilePreview = document.getElementById("profilePreview");
+profilePic.addEventListener("change", () => {
+    const f = profilePic.files[0];
+    if(!f) return;
+    const r = new FileReader();
+    r.onload = e => profilePreview.src = e.target.result;
+    r.readAsDataURL(f);
+});
+
+/* ===================================================
+   REGISTER flow: checkPassword -> show displayed pass ->
+   change or continue -> avatar step -> finalRegister
+   =================================================== */
+function checkPassword(){
+    const u = document.getElementById("regUser").value.trim();
+    const p = document.getElementById("regPass").value;
+    if(!u || !p){ alert("Kullanıcı adı ve şifre gerekli"); return; }
+
+    const users = getUsers();
+    if(users[u]){ alert("Bu kullanıcı adı zaten var"); return; }
+
+    document.getElementById("shownPass").innerText = p;
+    document.getElementById("checkResult").style.display = "block";
+    document.getElementById("avatarStep").style.display = "none";
+}
+window.checkPassword = checkPassword;
+
+function changePass(){
+    document.getElementById("regPass").value = "";
+    document.getElementById("checkResult").style.display = "none";
+}
+window.changePass = changePass;
+
+function showAvatarStep(){
+    document.getElementById("checkResult").style.display = "none";
+    document.getElementById("avatarStep").style.display = "block";
+}
+window.showAvatarStep = showAvatarStep;
+
+function finalRegister(){
+    const u = document.getElementById("regUser").value.trim();
+    const p = document.getElementById("regPass").value;
+    const img = profilePreview.src || "";
+
+    if(!u || !p){ alert("Boş bırakamazsın"); return; }
+    const users = getUsers();
+    if(users[u]){ alert("Bu kullanıcı zaten var"); return; }
+
+    users[u] = { pass: p, profile: img };
+    saveUsers(users);
+    alert("Kayıt başarılı. Giriş ekranına yönlendiriliyorsun.");
+    // reset register UI
+    document.getElementById("regUser").value = "";
+    document.getElementById("regPass").value = "";
+    profilePreview.src = "";
+    profilePic.value = "";
+    document.getElementById("avatarStep").style.display = "none";
+    show(login);
+}
+window.finalRegister = finalRegister;
+
+/* ===================================================
+   LOGIN
+   =================================================== */
+document.getElementById("showPassLogin").addEventListener("change", function(){
+    document.getElementById("loginPass").type = this.checked ? "text" : "password";
+});
+
+function loginUserFunc(){
+    const u = document.getElementById("loginUser").value.trim();
+    const p = document.getElementById("loginPass").value;
+    const users = getUsers();
+    if(!users[u]){ alert("Kullanıcı yok. Kayıt olun."); return; }
+    if(users[u].pass !== p){ alert("Şifre yanlış"); return; }
+
+    setCurrent(u);
+    loadHome();
+    show(home);
+}
+window.loginUserFunc = loginUserFunc;
+
+/* ===================================================
+   HOME: load users (from localStorage) and search
+   =================================================== */
+function loadHome(){
+    const me = getCurrent();
+    if(!me) { show(login); return; }
+    document.getElementById("meName").innerText = me;
+
+    const users = getUsers();
+    const list = document.getElementById("userList");
+    list.innerHTML = "";
+
+    for(const name in users){
+        if(name === me) continue;
+        const u = users[name];
+        const div = document.createElement("div");
+        div.className = "userItem";
+        div.innerHTML = `<img src="${u.profile || ''}" alt=""><div style="flex:1">${name}</div><button style="min-width:86px">DM</button>`;
+        div.querySelector("button").addEventListener("click", ()=> openChat(name));
+        list.appendChild(div);
+    }
+}
+window.loadHome = loadHome;
+
+document.getElementById("searchUser").addEventListener("input", function(){
+    const q = this.value.toLowerCase();
+    const items = document.querySelectorAll(".userItem");
+    items.forEach(it=>{
+        const text = it.innerText.toLowerCase();
+        it.style.display = text.includes(q) ? "flex" : "none";
+    });
+});
+
+/* ===================================================
+   CHAT: general + DM
+   - openGeneral for general chat
+   - openChat(target) for private (sorted key)
+   =================================================== */
+let currentChatKey = null;
+
+function openGeneral(){
+    const me = getCurrent();
+    if(!me) { show(login); return; }
+    currentChatKey = "general";
+    document.getElementById("chatWith").innerText = "Genel Sohbet";
+    document.getElementById("messages").innerHTML = "";
+    show(chat);
+
+    // detach old listeners by reloading page reference (no explicit off here)
+    const genRef = ref(db, "general");
+    onChildAdded(genRef, snap => {
+        const m = snap.val();
+        appendMsg(m.sender, m.text);
+    });
+}
+window.openGeneral = openGeneral;
+
+function sortedKey(a,b){
+    return [a,b].sort().join("_");
+}
+
+function openChat(target){
+    const me = getCurrent();
+    if(!me) { show(login); return; }
+    const key = "chats/" + sortedKey(me, target);
+    currentChatKey = key;
+    document.getElementById("chatWith").innerText = target;
+    document.getElementById("messages").innerHTML = "";
+    show(chat);
+
+    // listen for messages
+    const chatRef = ref(db, key);
+    onChildAdded(chatRef, snap => {
+        const m = snap.val();
+        appendMsg(m.sender, m.text);
+    });
+}
+window.openChat = openChat;
+
+/* append message to UI */
+function appendMsg(sender, text){
+    const me = getCurrent();
+    const d = document.createElement("div");
+    d.className = "msg" + (sender === me ? " me" : "");
+    d.innerText = (sender === me ? text : (sender + ": " + text));
+    document.getElementById("messages").appendChild(d);
+    document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
+}
+
+/* send message */
+function sendMsg(){
+    const me = getCurrent();
+    if(!me){ show(login); return; }
+    const text = document.getElementById("msgInput").value.trim();
+    if(!text) return;
+
+    if(currentChatKey === "general"){
+        push(ref(db, "general"), { sender: me, text: text, time: Date.now() });
+    } else if(currentChatKey){
+        push(ref(db, currentChatKey), { sender: me, text: text, time: Date.now() });
+    }
+    document.getElementById("msgInput").value = "";
+}
+window.sendMsg = sendMsg;
+
+/* clear messages in UI only (local clear) */
+function clearMessagesLocal(){
+    document.getElementById("messages").innerHTML = "";
+}
+window.clearMessagesLocal = clearMessagesLocal;
+
+/* logout */
+function logout(){
+    localStorage.removeItem("current");
+    show(login);
+}
+window.logout = logout;
+
+/* On load: if currently logged in, go to home */
+if(getCurrent()){
+    loadHome();
+    show(home);
+}
+</script>
+</body>
+</html>
